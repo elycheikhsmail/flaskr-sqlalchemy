@@ -8,10 +8,9 @@ with io.open('README.rst', 'rt', encoding='utf8') as f:
 setup(
     name='flaskr',
     version='1.0.0',
-    url='http://flask.pocoo.org/docs/tutorial/',
+    url= "https://github.com/elycheikhsmail/flaskr-sqlalchemy"
     license='BSD',
     maintainer='Ely Cheikh',
-    maintainer_email='contact@palletsprojects.com',
     description='The basic blog app built in the Flask tutorial with sqlachemy',
     long_description=readme,
     packages=find_packages(),
