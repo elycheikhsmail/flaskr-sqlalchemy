@@ -1,205 +1,64 @@
-# -*- coding: utf-8 -*-
-"""
-    tests.conftest
-    ~~~~~~~~~~~~~~
-
-    :copyright: © 2010 by the Pallets team.
-    :license: BSD, see LICENSE for more details.
-"""
-
-import gc
 import os
-import pkgutil
-import sys
-import textwrap
+import tempfile
 
 import pytest
-from _pytest import monkeypatch
+from flaskr import create_app
+from flaskr.db import get_db, init_db
 
-import flask
-from flask import Flask as _Flask
-
-
-@pytest.fixture(scope='session', autouse=True)
-def _standard_os_environ():
-    """Set up ``os.environ`` at the start of the test session to have
-    standard values. Returns a list of operations that is used by
-    :func:`._reset_os_environ` after each test.
-    """
-    mp = monkeypatch.MonkeyPatch()
-    out = (
-        (os.environ, 'FLASK_APP', monkeypatch.notset),
-        (os.environ, 'FLASK_ENV', monkeypatch.notset),
-        (os.environ, 'FLASK_DEBUG', monkeypatch.notset),
-        (os.environ, 'FLASK_RUN_FROM_CLI', monkeypatch.notset),
-        (os.environ, 'WERKZEUG_RUN_MAIN', monkeypatch.notset),
-    )
-
-    for _, key, value in out:
-        if value is monkeypatch.notset:
-            mp.delenv(key, False)
-        else:
-            mp.setenv(key, value)
-
-    yield out
-    mp.undo()
-
-
-@pytest.fixture(autouse=True)
-def _reset_os_environ(monkeypatch, _standard_os_environ):
-    """Reset ``os.environ`` to the standard environ after each test,
-    in case a test changed something without cleaning up.
-    """
-    monkeypatch._setitem.extend(_standard_os_environ)
-
-
-class Flask(_Flask):
-    testing = True
-    secret_key = 'test key'
+# read in SQL for populating test data
+with open(os.path.join(os.path.dirname(__file__), 'data.sql'), 'rb') as f:
+    _data_sql = f.read().decode('utf8')
 
 
 @pytest.fixture
 def app():
-    app = Flask('flask_test', root_path=os.path.dirname(__file__))
-    return app
+    """Create and configure a new app instance for each test."""
+    # create a temporary file to isolate the database for each test
+    db_fd, db_path = tempfile.mkstemp()
+    # create the app with common test config
+    app = create_app({
+        'TESTING': True,
+        'DATABASE': db_path,
+    })
 
+    # create the database and load test data
+    with app.app_context():
+        init_db()
+        get_db().executescript(_data_sql)
 
-@pytest.fixture
-def app_ctx(app):
-    with app.app_context() as ctx:
-        yield ctx
+    yield app
 
-
-@pytest.fixture
-def req_ctx(app):
-    with app.test_request_context() as ctx:
-        yield ctx
+    # close and remove the temporary database
+    os.close(db_fd)
+    os.unlink(db_path)
 
 
 @pytest.fixture
 def client(app):
+    """A test client for the app."""
     return app.test_client()
 
 
 @pytest.fixture
-def test_apps(monkeypatch):
-    monkeypatch.syspath_prepend(
-        os.path.abspath(os.path.join(
-            os.path.dirname(__file__), 'test_apps'))
-    )
+def runner(app):
+    """A test runner for the app's Click commands."""
+    return app.test_cli_runner()
 
 
-@pytest.fixture(autouse=True)
-def leak_detector():
-    yield
+class AuthActions(object):
+    def __init__(self, client):
+        self._client = client
 
-    # make sure we're not leaking a request context since we are
-    # testing flask internally in debug mode in a few cases
-    leaks = []
-    while flask._request_ctx_stack.top is not None:
-        leaks.append(flask._request_ctx_stack.pop())
-    assert leaks == []
-
-
-@pytest.fixture(params=(True, False))
-def limit_loader(request, monkeypatch):
-    """Patch pkgutil.get_loader to give loader without get_filename or archive.
-
-    This provides for tests where a system has custom loaders, e.g. Google App
-    Engine's HardenedModulesHook, which have neither the `get_filename` method
-    nor the `archive` attribute.
-
-    This fixture will run the testcase twice, once with and once without the
-    limitation/mock.
-    """
-    if not request.param:
-        return
-
-    class LimitedLoader(object):
-        def __init__(self, loader):
-            self.loader = loader
-
-        def __getattr__(self, name):
-            if name in ('archive', 'get_filename'):
-                msg = 'Mocking a loader which does not have `%s.`' % name
-                raise AttributeError(msg)
-            return getattr(self.loader, name)
-
-    old_get_loader = pkgutil.get_loader
-
-    def get_loader(*args, **kwargs):
-        return LimitedLoader(old_get_loader(*args, **kwargs))
-
-    monkeypatch.setattr(pkgutil, 'get_loader', get_loader)
-
-
-@pytest.fixture
-def modules_tmpdir(tmpdir, monkeypatch):
-    """A tmpdir added to sys.path."""
-    rv = tmpdir.mkdir('modules_tmpdir')
-    monkeypatch.syspath_prepend(str(rv))
-    return rv
-
-
-@pytest.fixture
-def modules_tmpdir_prefix(modules_tmpdir, monkeypatch):
-    monkeypatch.setattr(sys, 'prefix', str(modules_tmpdir))
-    return modules_tmpdir
-
-
-@pytest.fixture
-def site_packages(modules_tmpdir, monkeypatch):
-    """Create a fake site-packages."""
-    rv = modules_tmpdir \
-        .mkdir('lib') \
-        .mkdir('python{x[0]}.{x[1]}'.format(x=sys.version_info)) \
-        .mkdir('site-packages')
-    monkeypatch.syspath_prepend(str(rv))
-    return rv
-
-
-@pytest.fixture
-def install_egg(modules_tmpdir, monkeypatch):
-    """Generate egg from package name inside base and put the egg into
-    sys.path."""
-
-    def inner(name, base=modules_tmpdir):
-        if not isinstance(name, str):
-            raise ValueError(name)
-        base.join(name).ensure_dir()
-        base.join(name).join('__init__.py').ensure()
-
-        egg_setup = base.join('setup.py')
-        egg_setup.write(textwrap.dedent("""
-        from setuptools import setup
-        setup(name='{0}',
-              version='1.0',
-              packages=['site_egg'],
-              zip_safe=True)
-        """.format(name)))
-
-        import subprocess
-        subprocess.check_call(
-            [sys.executable, 'setup.py', 'bdist_egg'],
-            cwd=str(modules_tmpdir)
+    def login(self, username='test', password='test'):
+        return self._client.post(
+            '/auth/login',
+            data={'username': username, 'password': password}
         )
-        egg_path, = modules_tmpdir.join('dist/').listdir()
-        monkeypatch.syspath_prepend(str(egg_path))
-        return egg_path
 
-    return inner
+    def logout(self):
+        return self._client.get('/auth/logout')
 
 
 @pytest.fixture
-def purge_module(request):
-    def inner(name):
-        request.addfinalizer(lambda: sys.modules.pop(name, None))
-
-    return inner
-
-
-@pytest.fixture(autouse=True)
-def catch_deprecation_warnings(recwarn):
-    yield
-    gc.collect()
-    assert not recwarn.list, '\n'.join(str(w.message) for w in recwarn.list)
+def auth(client):
+    return AuthActions(client)

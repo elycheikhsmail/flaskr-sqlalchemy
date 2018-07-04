@@ -1,76 +1,77 @@
-Flask
-=====
+Flaskr
+======
 
-Flask is a lightweight `WSGI`_ web application framework. It is designed
-to make getting started quick and easy, with the ability to scale up to
-complex applications. It began as a simple wrapper around `Werkzeug`_
-and `Jinja`_ and has become one of the most popular Python web
-application frameworks.
+The basic blog app built in the Flask `tutorial`_.
 
-Flask offers suggestions, but doesn't enforce any dependencies or
-project layout. It is up to the developer to choose the tools and
-libraries they want to use. There are many extensions provided by the
-community that make adding new functionality easy.
+.. _tutorial: http://flask.pocoo.org/docs/tutorial/
 
 
-Installing
-----------
+Install
+-------
 
-Install and update using `pip`_:
+**Be sure to use the same version of the code as the version of the docs
+you're reading.** You probably want the latest tagged version, but the
+default Git version is the master branch. ::
 
-.. code-block:: text
+    # clone the repository
+    git clone https://github.com/pallets/flask
+    cd flask
+    # checkout the correct version
+    git tag  # shows the tagged versions
+    git checkout latest-tag-found-above
+    cd examples/tutorial
 
-    pip install -U Flask
+Create a virtualenv and activate it::
 
+    python3 -m venv venv
+    . venv/bin/activate
 
-A Simple Example
-----------------
+Or on Windows cmd::
 
-.. code-block:: python
+    py -3 -m venv venv
+    venv\Scripts\activate.bat
 
-    from flask import Flask
+Install Flaskr::
 
-    app = Flask(__name__)
+    pip install -e .
 
-    @app.route('/')
-    def hello():
-        return 'Hello, World!'
+Or if you are using the master branch, install Flask from source before
+installing Flaskr::
 
-.. code-block:: text
-
-    $ env FLASK_APP=hello.py flask run
-     * Serving Flask app "hello"
-     * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
-
-
-Donate
-------
-
-The Pallets organization develops and supports Flask and the libraries
-it uses. In order to grow the community of contributors and users, and
-allow the maintainers to devote more time to the projects, `please
-donate today`_.
-
-.. _please donate today: https://psfmember.org/civicrm/contribute/transact?reset=1&id=20
+    pip install -e ../..
+    pip install -e .
 
 
-Links
------
+Run
+---
 
-* Website: https://www.palletsprojects.com/p/flask/
-* Documentation: http://flask.pocoo.org/docs/
-* License: `BSD <https://github.com/pallets/flask/blob/master/LICENSE>`_
-* Releases: https://pypi.org/project/Flask/
-* Code: https://github.com/pallets/flask
-* Issue tracker: https://github.com/pallets/flask/issues
-* Test status:
+::
 
-  * Linux, Mac: https://travis-ci.org/pallets/flask
-  * Windows: https://ci.appveyor.com/project/pallets/flask
+    export FLASK_APP=flaskr
+    export FLASK_ENV=development
+    flask init-db
+    flask run
 
-* Test coverage: https://codecov.io/gh/pallets/flask
+Or on Windows cmd::
 
-.. _WSGI: https://wsgi.readthedocs.io
-.. _Werkzeug: https://www.palletsprojects.com/p/werkzeug/
-.. _Jinja: https://www.palletsprojects.com/p/jinja/
-.. _pip: https://pip.pypa.io/en/stable/quickstart/
+    set FLASK_APP=flaskr
+    set FLASK_ENV=development
+    flask init-db
+    flask run
+
+Open http://127.0.0.1:5000 in a browser.
+
+
+Test
+----
+
+::
+
+    pip install '.[test]'
+    pytest
+
+Run with coverage report::
+
+    coverage run -m pytest
+    coverage report
+    coverage html  # open htmlcov/index.html in a browser
